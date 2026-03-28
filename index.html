@@ -15,9 +15,9 @@
 --f:'DM Sans',sans-serif;--fm:'DM Mono',monospace;
 --r:12px;--rsm:8px;--rlg:18px;--navh:62px;--hdrh:56px}
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}html{height:100%}
-body{font-family:var(--f);background:var(--bg);color:var(--w);height:100%;overflow:hidden;-webkit-font-smoothing:antialiased;-webkit-tap-highlight-color:transparent}
+body{font-family:var(--f);background:var(--bg);color:var(--w);min-height:100dvh;overflow:hidden;-webkit-font-smoothing:antialiased;-webkit-tap-highlight-color:transparent}
 input,button,select,textarea{font-family:inherit}button{cursor:pointer;border:none;background:none}
-.scr{height:calc(100vh - var(--hdrh) - var(--navh));overflow-y:auto;padding:14px;padding-bottom:28px;-webkit-overflow-scrolling:touch}
+.scr{flex:1;min-height:0;overflow-y:auto;padding:14px;padding-bottom:calc(92px + env(safe-area-inset-bottom));-webkit-overflow-scrolling:touch}
 .scr::-webkit-scrollbar{width:3px}.scr::-webkit-scrollbar-thumb{background:var(--bord2);border-radius:2px}
 /* LOGIN */
 #login{position:fixed;inset:0;z-index:999;display:flex;flex-direction:column;align-items:center;justify-content:center;background:var(--bg);padding:24px}
@@ -36,14 +36,14 @@ input,button,select,textarea{font-family:inherit}button{cursor:pointer;border:no
 .nb.del{font-size:14px;color:var(--wdim)}
 .nb.go{background:var(--gold);color:var(--bg);border-color:transparent;font-size:12px;font-weight:700;letter-spacing:.06em;font-family:var(--f)}.nb.go:active{background:var(--gold2)}
 /* APP */
-#app{display:flex;flex-direction:column;height:100vh}#app.hidden{display:none}
+#app{display:flex;flex-direction:column;height:100dvh;min-height:100dvh}#app.hidden{display:none}
 header{height:var(--hdrh);background:var(--sur);border-bottom:1px solid var(--bord);display:flex;align-items:center;padding:0 14px;gap:10px;flex-shrink:0}
 .hlogo{width:34px;height:34px;border-radius:8px;overflow:hidden;border:1px solid var(--bord2);flex-shrink:0}.hlogo img{width:100%;height:100%;object-fit:cover}
 .htitle{font-size:15px;font-weight:600;flex:1}
 .hdate{font-family:var(--fm);font-size:10px;color:var(--wdim);background:var(--card);padding:3px 8px;border-radius:6px;border:1px solid var(--bord)}
 .hav{width:30px;height:30px;border-radius:50%;background:var(--golddim);border:1.5px solid var(--gold);display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;color:var(--gold);cursor:pointer}
 /* NAV */
-#nav{height:var(--navh);background:var(--sur);border-top:1px solid var(--bord);display:flex;align-items:stretch;flex-shrink:0}
+#nav{height:calc(var(--navh) + env(safe-area-inset-bottom));padding-bottom:env(safe-area-inset-bottom);background:var(--sur);border-top:1px solid var(--bord);display:flex;align-items:stretch;flex-shrink:0}
 .ni{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;color:var(--wdim);font-size:10px;cursor:pointer;transition:color .15s;user-select:none;position:relative}
 .ni .ic{font-size:20px;transition:transform .15s}.ni.active{color:var(--gold)}.ni.active .ic{transform:scale(1.1)}
 .ni.active::after{content:'';position:absolute;bottom:0;left:20%;right:20%;height:2px;background:var(--gold);border-radius:2px 2px 0 0}
@@ -87,7 +87,7 @@ header{height:var(--hdrh);background:var(--sur);border-bottom:1px solid var(--bo
 .tkt-item{display:flex;align-items:center;gap:8px;background:var(--sur);border-radius:var(--rsm);padding:8px 10px;border:1px solid var(--bord)}
 .tkt-name{font-size:11px;color:var(--gold);flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .tkt-del{color:var(--wdim);font-size:13px;padding:2px 5px}
-.tkt-del:active{color:var(--red)}
+.tkt-del:active{color:var(--red)}.tkt-open{font-size:11px;color:#90caf9;text-decoration:none;border:1px solid rgba(144,202,249,.25);padding:4px 8px;border-radius:999px}.tkt-open:active{transform:scale(.98)}.tkt-badge{display:inline-flex;align-items:center;padding:2px 7px;border-radius:999px;font-size:10px;font-weight:700}.tkt-badge.ok{background:rgba(76,175,80,.12);color:#81c784}.tkt-badge.wait{background:rgba(201,168,76,.12);color:var(--gold)}.help-note{font-size:11px;color:var(--wdim);line-height:1.45}
 /* ITEMS */
 .irow{display:flex;align-items:center;gap:8px;background:var(--sur);border-radius:var(--rsm);padding:9px 10px;margin-bottom:5px;border:1px solid var(--bord)}
 .iinfo{flex:1;min-width:0}.iname{font-size:13px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
@@ -348,6 +348,8 @@ function pickFecha(){
 
 /* ── NUEVA COMPRA ── */
 var curProv=null,curItems=[],curTickets=[],curHasTicket=true,editIdx=-1;
+function getUploadedTicketIds(){return curTickets.filter(function(t){return t&&t.uploaded&&t.ticketId;}).map(function(t){return t.ticketId;});}
+function hasPendingTickets(){return curTickets.some(function(t){return t&&!t.uploaded&&t.file;});}
 
 function pgNueva(){
   el('hdate').textContent=fmtS(S.fecha);
@@ -384,20 +386,18 @@ function pickProv(c){
 
 /* FIX 2: Ticket zone — foto + archivo + múltiples tickets */
 function renderTicketZone(){
-  var h='<div class="tkt-zone'+(curTickets.length?' has':'')+'">'+
-    '<div style="font-size:11px;color:var(--wdim);margin-bottom:8px;font-weight:600">'+
-    '&#128247; Tickets / Comprobantes</div>'+
-    '<div class="tkt-btns">'+
-      '<button class="tkt-btn" id="tkt-btn-cam">&#128247; Tomar foto</button>'+
-      '<button class="tkt-btn" id="tkt-btn-file">&#128193; Subir archivo</button>'+
-    '</div>'+
-    '<input type="file" id="tkt-input-cam"  accept="image/*" capture="environment" style="display:none"/>'+
-    '<input type="file" id="tkt-input-file" accept="image/*,application/pdf,.jpg,.jpeg,.png,.pdf" multiple style="display:none"/>'+
-    (curTickets.length
+  var uploadedIds=getUploadedTicketIds();
+  var pending=curTickets.filter(function(t){return t&&!t.uploaded;}).length;
+  var uploaded=uploadedIds.length;
+  var h='<div class="tkt-zone'+(curTickets.length?' has':'')+'>'+    '<div style="font-size:11px;color:var(--wdim);margin-bottom:8px;font-weight:600">&#128247; Tickets / Comprobantes</div>'+    '<div class="help-note" style="margin-bottom:8px">1) agrega uno o varios tickets, 2) toca <b>Subir tickets ahora</b>, 3) cuando veas <b>Guardado</b> ya quedó en Drive y puedes subir otro del mismo proveedor.</div>'+    '<div class="tkt-btns">'+      '<button class="tkt-btn" id="tkt-btn-cam">&#128247; Tomar foto</button>'+      '<button class="tkt-btn" id="tkt-btn-file">&#128193; Subir archivo</button>'+    '</div>'+    '<div style="display:flex;gap:8px;align-items:center;margin-bottom:10px">'+      '<button class="btn btn-o btn-sm" id="btn-upload-tickets"'+(pending?'':' disabled style="opacity:.5;pointer-events:none"')+'>Subir tickets ahora</button>'+      '<span class="muted" style="font-size:11px">'+uploaded+' guardado(s) · '+pending+' pendiente(s)</span>'+    '</div>'+    '<input type="file" id="tkt-input-cam"  accept="image/*" capture="environment" style="display:none"/>'+    '<input type="file" id="tkt-input-file" accept="image/*,application/pdf,.jpg,.jpeg,.png,.pdf" multiple style="display:none"/>'+    (curTickets.length
       ? '<div class="tkt-list">'+curTickets.map(function(t,i){
+          var badge=t.uploaded?'<span class="tkt-badge ok">Guardado</span>':'<span class="tkt-badge wait">Pendiente</span>';
+          var open=t.uploaded&&t.fileUrl?'<a class="tkt-open" href="'+t.fileUrl+'" target="_blank">Abrir</a>':'';
           return '<div class="tkt-item">'+
             '<span style="font-size:14px">&#128206;</span>'+
-            '<span class="tkt-name">'+t.name+'</span>'+
+            '<span class="tkt-name">'+(t.displayName||t.name||('ticket_'+(i+1)))+'</span>'+
+            badge+
+            open+
             '<button class="tkt-del" data-ti="'+i+'">&#10006;</button>'+
           '</div>';
         }).join('')+'</div>'
@@ -419,6 +419,7 @@ function renderProvForm(){
   if(curHasTicket){h+=renderTicketZone();}
   else{h+='<div style="background:var(--golddim);border:1px solid rgba(201,168,76,.3);border-radius:var(--rsm);padding:8px 11px;margin-bottom:11px;font-size:11px;color:var(--gold)">&#9998; Entrada manual — sin ticket</div>';}
 
+  h+='<div class="help-note" style="margin-bottom:10px">Después de subir el ticket, agrega aquí los artículos para que salgan en <b>Inicio</b> y entren al Excel, PDF y Tickets del día.</div>';
   h+='<div id="items-list">';
   curItems.forEach(function(it,i){
     h+='<div class="irow">'+
@@ -467,21 +468,19 @@ function renderProvForm(){
 }
 
 function wireProvForm(){
-  // FIX 2: Ticket buttons
   var bc=el('tkt-btn-cam'),bf=el('tkt-btn-file');
   var ic=el('tkt-input-cam'),iff=el('tkt-input-file');
   if(bc&&ic){bc.addEventListener('click',function(){ic.click();});}
   if(bf&&iff){bf.addEventListener('click',function(){iff.click();});}
-  if(ic)ic.addEventListener('change',function(ev){handleTktFiles(ev.target.files);});
-  if(iff)iff.addEventListener('change',function(ev){handleTktFiles(ev.target.files);});
-  // Ticket delete
+  if(ic)ic.addEventListener('change',function(ev){handleTktFiles(ev.target.files);ev.target.value='';});
+  if(iff)iff.addEventListener('change',function(ev){handleTktFiles(ev.target.files);ev.target.value='';});
+  var bu=el('btn-upload-tickets');if(bu)bu.addEventListener('click',uploadPendingTickets);
   document.querySelectorAll('.tkt-del').forEach(function(b){
     b.addEventListener('click',function(){
       curTickets.splice(parseInt(b.dataset.ti),1);
       el('prov-form').innerHTML=renderProvForm();wireProvForm();
     });
   });
-  // Add/Edit item
   var ba=el('btn-add-item');
   if(ba)ba.addEventListener('click',function(){
     editIdx=-1;el('prov-form').innerHTML=renderProvForm();wireProvForm();
@@ -491,7 +490,6 @@ function wireProvForm(){
   var bd=el('btn-do-add');if(bd)bd.addEventListener('click',addOrEditItem);
   var bca=el('btn-cancel-add');if(bca)bca.addEventListener('click',function(){editIdx=-1;el('prov-form').innerHTML=renderProvForm();wireProvForm();});
   var bs=el('btn-save-compra');if(bs)bs.addEventListener('click',guardarCompra);
-  // FIX 3: Edit/Delete existing items
   document.querySelectorAll('.iedit').forEach(function(b){
     b.addEventListener('click',function(){
       editIdx=parseInt(b.dataset.idx);
@@ -512,9 +510,10 @@ function handleTktFiles(files){
   if(!files||!files.length)return;
   var added=0;
   Array.from(files).forEach(function(f){
-    curTickets.push(f);added++;
+    curTickets.push({file:f,name:f.name,displayName:f.name,uploaded:false,mimeType:f.type||'image/jpeg'});
+    added++;
   });
-  toast(added+' ticket(s) agregado(s)','ok');
+  toast(added+' ticket(s) agregado(s). Ahora toca "Subir tickets ahora"','ok');
   el('prov-form').innerHTML=renderProvForm();
   wireProvForm();
 }
@@ -545,31 +544,51 @@ async function addOrEditItem(){
   el('prov-form').innerHTML=renderProvForm();wireProvForm();
 }
 
+async function uploadPendingTickets(){
+  if(!curProv){toast('Selecciona un proveedor','err');return false;}
+  var pending=curTickets.filter(function(t){return t&&!t.uploaded&&t.file;});
+  if(!pending.length){toast('No hay tickets pendientes','err');return true;}
+  load(true);toast('Subiendo '+pending.length+' ticket(s)...');
+  var total=curItems.reduce(function(s,i){return s+(parseFloat(i.total)||0);},0);
+  var okCount=0;
+  for(var ti=0;ti<pending.length;ti++){
+    var t=pending[ti];
+    try{
+      var b64=await toB64(t.file);
+      var tr=await api('uploadTicket',{
+        fecha:S.fecha,proveedor:curProv,
+        fileName:t.file.name||t.name||('ticket_'+(ti+1)+'.jpg'),
+        mimeType:t.file.type||t.mimeType||'image/jpeg',
+        base64Data:b64,total:total,
+        ticketIndex:curTickets.indexOf(t)
+      });
+      if(tr.ok){
+        t.uploaded=true;
+        t.ticketId=tr.ticketId;
+        t.fileUrl=tr.fileUrl;
+        t.displayName=tr.fileName||t.displayName||t.name;
+        delete t.file;
+        okCount++;
+      }else{
+        toast('Error ticket '+(ti+1)+': '+(tr.error||'No se pudo subir'),'err');
+      }
+    }catch(e){toast('Error ticket '+(ti+1)+': '+e.message,'err');}
+  }
+  load(false);
+  el('prov-form').innerHTML=renderProvForm();wireProvForm();
+  if(okCount){toast(okCount+' ticket(s) guardado(s) en Drive','ok');}
+  return !hasPendingTickets();
+}
+
 async function guardarCompra(){
   if(!curProv){toast('Selecciona un proveedor','err');return;}
   if(!curItems.length){toast('Agrega al menos un articulo','err');return;}
-  load(true);
-  var ticketIds=[];
-  // FIX 2: subir todos los tickets
-  if(curTickets.length){
-    toast('Subiendo '+curTickets.length+' ticket(s)...');
-    var total=curItems.reduce(function(s,i){return s+(parseFloat(i.total)||0);},0);
-    for(var ti=0;ti<curTickets.length;ti++){
-      try{
-        var b64=await toB64(curTickets[ti]);
-        var tr=await api('uploadTicket',{
-          fecha:S.fecha,proveedor:curProv,
-          fileName:curTickets[ti].name,
-          mimeType:curTickets[ti].type||'image/jpeg',
-          base64Data:b64,total:total,
-          ticketIndex:ti
-        });
-        if(tr.ok)ticketIds.push(tr.ticketId);
-        else toast('Error ticket '+(ti+1)+': '+tr.error,'err');
-      }catch(e){toast('Error ticket '+(ti+1)+': '+e.message,'err');}
-    }
-    toast(ticketIds.length+' ticket(s) subido(s)','ok');
+  if(curHasTicket&&curTickets.length&&hasPendingTickets()){
+    var ready=await uploadPendingTickets();
+    if(!ready){toast('Primero termina de subir los tickets pendientes','err');return;}
   }
+  load(true);
+  var ticketIds=getUploadedTicketIds();
   var items=curItems.map(function(i){
     return{producto:i.producto,cantidad:i.cantidad,unidad:i.unidad,
            precioUnitario:i.precioUnitario,total:i.total,
@@ -578,7 +597,7 @@ async function guardarCompra(){
   var r=await api('saveCompras',{fecha:S.fecha,items:items});
   load(false);
   if(r.ok){
-    toast(curItems.length+' articulos guardados','ok');
+    toast(curItems.length+' articulos guardados. Los reportes del dia se sobreescriben con la version nueva.','ok');
     curProv=null;curItems=[];curTickets=[];editIdx=-1;
     S.compras={};S.tickets={};
     renderNueva();
