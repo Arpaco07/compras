@@ -247,11 +247,11 @@ async function pgHome(){
   var cr=res[0],tr=res[1];
   S.compras={};S.tickets={};
   if(cr.ok)(cr.compras||[]).forEach(function(c){if(!S.compras[c.proveedor])S.compras[c.proveedor]=[];S.compras[c.proveedor].push(c);});
-  if(tr.ok)(tr.tickets||[]).forEach(function(t){S.tickets[t.proveedor]=t;});
+  if(tr.ok)(tr.tickets||[]).forEach(function(t){if(!S.tickets[t.proveedor])S.tickets[t.proveedor]=[];S.tickets[t.proveedor].push(t);});
   var items=[];Object.values(S.compras).forEach(function(a){items=items.concat(a);});
   var total=items.reduce(function(s,c){return s+(parseFloat(c.total)||0);},0);
   var provList=Object.keys(S.compras);
-  var tickCount=Object.keys(S.tickets).length;
+  var tickCount=Object.values(S.tickets).reduce(function(s,a){return s+a.length;},0);
 
   var detalle='';
   provList.forEach(function(p){
@@ -260,7 +260,7 @@ async function pgHome(){
     detalle+='<div style="display:flex;align-items:center;gap:8px;margin-bottom:5px">';
     detalle+='<span style="font-size:11px;color:var(--gold)">&#9670;</span>';
     detalle+='<span style="font-size:13px;font-weight:700;flex:1">'+p+'</span>';
-    if(S.tickets[p])detalle+='<span class="badge bgreen" style="font-size:9px">&#128206; ticket</span>';
+    if(S.tickets[p]&&S.tickets[p].length)detalle+='<span class="badge bgreen" style="font-size:9px">&#128206; '+S.tickets[p].length+' ticket(s)</span>';
     detalle+='<span class="mono" style="font-size:13px;color:var(--gold);font-weight:700">'+money(sub)+'</span></div>';
     (S.compras[p]||[]).forEach(function(it){
       detalle+='<div class="fb" style="padding:4px 8px;font-size:12px;border-bottom:1px solid var(--bord)">';
@@ -290,10 +290,14 @@ async function pgHome(){
       ?'<div class="card"><div class="ctitle">&#128196; Detalle del dia</div>'+detalle+'</div>'
       :'<div class="empty"><div class="empty-ic">&#10022;</div><div class="empty-tx">Sin compras para esta fecha</div></div>'
     )+
-    '<button class="btn btn-g btn-full" style="margin-top:4px" id="btn-reg">+ Registrar compras del dia</button>';
+    '<div style="display:flex;gap:8px;margin-top:4px">'+
+    '<button class="btn btn-o" style="flex:1" id="btn-ver-dia">Ver / editar dia</button>'+
+    '<button class="btn btn-g" style="flex:1" id="btn-reg">+ Registrar compras del dia</button>'+
+    '</div>';
 
   el('btn-fecha').addEventListener('click',pickFecha);
   el('btn-reg').addEventListener('click',function(){go('nueva');});
+  var bvd=el('btn-ver-dia');if(bvd)bvd.addEventListener('click',function(){showDay(S.fecha);});
   el('btn-xlsx').addEventListener('click',function(){genReport('xlsx');});
   el('btn-pdf').addEventListener('click',function(){genReport('pdf');});
   el('btn-tix').addEventListener('click',function(){genReport('tickets');});
@@ -569,7 +573,7 @@ async function guardarCompra(){
   var items=curItems.map(function(i){
     return{producto:i.producto,cantidad:i.cantidad,unidad:i.unidad,
            precioUnitario:i.precioUnitario,total:i.total,
-           proveedor:curProv,ticketId:ticketIds[0]||''};
+           proveedor:curProv,ticketId:ticketIds[0]||'',ticketIds:ticketIds};
   });
   var r=await api('saveCompras',{fecha:S.fecha,items:items});
   load(false);
@@ -752,7 +756,7 @@ async function showDay(fecha){
     if(ht)ht.addEventListener('click',function(){genHistReport(fecha,'tickets');});
     // FIX 4: Edit/Delete items from historial (admin only)
     document.querySelectorAll('.iedit[data-id]').forEach(function(b){
-      b.addEventListener('click',function(){editItemModal(b.dataset.id,JSON.parse(decodeURIComponent(b.dataset.prod)));});
+      b.addEventListener('click',function(){editItemModal(b.dataset.id,JSON.parse(decodeURIComponent(b.dataset.prod)),fecha);});
     });
     document.querySelectorAll('.idel[data-id]').forEach(function(b){
       b.addEventListener('click',function(){deleteItemModal(b.dataset.id,fecha);});
@@ -761,7 +765,7 @@ async function showDay(fecha){
 }
 
 /* FIX 4: Modal para editar un item ya guardado en historial */
-function editItemModal(id,item){
+function editItemModal(id,item,fecha){
   var h='<div class="mtitle">&#9998; Editar articulo</div>'+
     '<div class="fg"><label class="fl">Producto</label><input type="text" class="fi" id="em-p" value="'+item.producto+'"/></div>'+
     '<div class="fr3">'+
@@ -782,10 +786,7 @@ function editItemModal(id,item){
   el('mc').innerHTML='<div class="mhandle" style="margin-bottom:14px"></div>'+h;
   setTimeout(function(){
     var bs=el('btn-em-save'),bc=el('btn-em-cancel');
-    if(bc)bc.addEventListener('click',function(){
-      // Re-open the day view
-      cModal();
-    });
+    if(bc)bc.addEventListener('click',function(){showDay(fecha);});
     if(bs)bs.addEventListener('click',async function(){
       var p=el('em-p')&&el('em-p').value.trim();
       if(!p){toast('Escribe el producto','err');return;}
@@ -796,7 +797,7 @@ function editItemModal(id,item){
       load(true);
       var r=await api('editCompra',{id:id,item:{producto:p,cantidad:c,unidad:u,precioUnitario:pu,total:t||pu*c}});
       load(false);
-      if(r.ok){toast('Articulo actualizado','ok');cModal();}
+      if(r.ok){toast('Articulo actualizado','ok');showDay(fecha);}
       else toast(r.error||'Error','err');
     });
   },50);
@@ -815,7 +816,7 @@ function deleteItemModal(id,fecha){
     if(bx)bx.addEventListener('click',function(){cModal();});
     if(bc)bc.addEventListener('click',async function(){
       load(true);var r=await api('deleteCompra',{id:id});load(false);
-      if(r.ok){toast('Articulo eliminado','ok');cModal();}
+      if(r.ok){toast('Articulo eliminado','ok');showDay(fecha);}
       else toast(r.error||'Error','err');
     });
   },50);
