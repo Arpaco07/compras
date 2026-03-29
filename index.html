@@ -350,6 +350,7 @@ function pickFecha(){
 var curProv=null,curItems=[],curTickets=[],curHasTicket=true,editIdx=-1;
 function getUploadedTicketIds(){return curTickets.filter(function(t){return t&&t.uploaded&&t.ticketId;}).map(function(t){return t.ticketId;});}
 function hasPendingTickets(){return curTickets.some(function(t){return t&&!t.uploaded&&t.file;});}
+function hasTicketsForOcr(){return curTickets.some(function(t){return t&&t.file;});}
 
 function pgNueva(){
   el('hdate').textContent=fmtS(S.fecha);
@@ -416,10 +417,17 @@ function renderProvForm(){
       (sub>0?'<span class="mono gold" style="font-size:12px">'+money(sub)+'</span>':'')+
     '</div>';
 
-  if(curHasTicket){h+=renderTicketZone();}
-  else{h+='<div style="background:var(--golddim);border:1px solid rgba(201,168,76,.3);border-radius:var(--rsm);padding:8px 11px;margin-bottom:11px;font-size:11px;color:var(--gold)">&#9998; Entrada manual — sin ticket</div>';}
+  if(curHasTicket){
+    h+=renderTicketZone();
+    h+='<div style="display:flex;gap:8px;margin-bottom:10px">'+
+      '<button class="btn btn-o btn-sm" style="flex:1'+(hasTicketsForOcr()?'':' ;opacity:.5;pointer-events:none')+'" id="btn-read-ocr">Leer ticket con OCR</button>'+
+      '<button class="btn btn-o btn-sm" style="flex:1'+(curTickets.some(function(t){return t&&t.ocrAccepted;})?'':' ;opacity:.5;pointer-events:none')+'" id="btn-reset-ocr">Limpiar OCR</button>'+
+    '</div>';
+  } else {
+    h+='<div style="background:var(--golddim);border:1px solid rgba(201,168,76,.3);border-radius:var(--rsm);padding:8px 11px;margin-bottom:11px;font-size:11px;color:var(--gold)">&#9998; Entrada manual — sin ticket</div>';
+  }
 
-  h+='<div class="help-note" style="margin-bottom:10px">Después de subir el ticket, agrega aquí los artículos para que salgan en <b>Inicio</b> y entren al Excel, PDF y Tickets del día.</div>';
+  h+='<div class="help-note" style="margin-bottom:10px">Toma o sube el ticket, toca <b>Leer ticket con OCR</b>, revisa el texto detectado y luego pulsa <b>Aceptar artículos</b>. Después guarda la compra para que salga en <b>Inicio</b> y entre al Excel, PDF y Tickets del día.</div>';
   h+='<div id="items-list">';
   curItems.forEach(function(it,i){
     h+='<div class="irow">'+
@@ -475,6 +483,8 @@ function wireProvForm(){
   if(ic)ic.addEventListener('change',function(ev){handleTktFiles(ev.target.files);ev.target.value='';});
   if(iff)iff.addEventListener('change',function(ev){handleTktFiles(ev.target.files);ev.target.value='';});
   var bu=el('btn-upload-tickets');if(bu)bu.addEventListener('click',uploadPendingTickets);
+  var bro=el('btn-read-ocr');if(bro)bro.addEventListener('click',readTicketsWithOcr);
+  var brst=el('btn-reset-ocr');if(brst)brst.addEventListener('click',resetAcceptedOcrItems);
   document.querySelectorAll('.tkt-del').forEach(function(b){
     b.addEventListener('click',function(){
       curTickets.splice(parseInt(b.dataset.ti),1);
@@ -542,6 +552,114 @@ async function addOrEditItem(){
   }
   editIdx=-1;
   el('prov-form').innerHTML=renderProvForm();wireProvForm();
+}
+
+
+async function readTicketsWithOcr(){
+  if(!curProv){toast('Selecciona un proveedor','err');return;}
+  var readable=curTickets.filter(function(t){return t&&t.file&&!t.ocrAccepted;});
+  if(!readable.length){toast('No hay tickets pendientes de OCR','err');return;}
+  load(true);toast('Leyendo '+readable.length+' ticket(s) con OCR...');
+  var detected=[];
+  for(var i=0;i<readable.length;i++){
+    var t=readable[i];
+    try{
+      var b64=await toB64(t.file);
+      var r=await api('ocrTicket',{
+        fecha:S.fecha,
+        proveedor:curProv,
+        mimeType:t.file.type||t.mimeType||'image/jpeg',
+        base64Data:b64
+      });
+      if(r.ok && r.productos && r.productos.length){
+        detected.push({ticket:t, proveedor:r.proveedor||curProv, total:r.total||0, productos:r.productos});
+      }else{
+        toast((t.displayName||t.name||('ticket '+(i+1)))+': '+(r.error||'Sin articulos detectados'),'err');
+      }
+    }catch(e){
+      toast('OCR: '+e.message,'err');
+    }
+  }
+  load(false);
+  if(!detected.length){toast('No se detectaron artículos útiles','err');return;}
+  openOcrReview(detected);
+}
+
+function openOcrReview(detected){
+  window._ocrDetected = detected;
+  var rows='';
+  detected.forEach(function(group,gi){
+    rows += '<div class="card" style="padding:10px;margin-bottom:10px">'+
+      '<div style="display:flex;justify-content:space-between;gap:8px;margin-bottom:8px">'+
+      '<div style="font-size:12px;font-weight:700">'+(group.ticket.displayName||group.ticket.name||('ticket '+(gi+1)))+'</div>'+
+      '<div class="badge bg">'+(group.proveedor||curProv)+'</div>'+
+      '</div>';
+    group.productos.forEach(function(it,ii){
+      var key = gi+'_'+ii;
+      rows += '<div class="add-form open" style="display:block;margin-bottom:8px">'+
+        '<div class="fr3">'+
+          '<div class="fg"><label class="fl">Producto</label><input class="fi ocr-p" data-k="'+key+'" value="'+escapeHtml(it.producto||'')+'"/></div>'+
+          '<div class="fg"><label class="fl">Cantidad</label><input type="number" step="0.01" min="0" class="fi ocr-c" data-k="'+key+'" value="'+(it.cantidad||1)+'"/></div>'+
+          '<div class="fg"><label class="fl">Unidad</label><input class="fi ocr-u" data-k="'+key+'" value="'+escapeHtml(it.unidad||'pza')+'"/></div>'+
+        '</div>'+
+        '<div class="fr">'+
+          '<div class="fg"><label class="fl">P.U.</label><input type="number" step="0.01" min="0" class="fi ocr-pu" data-k="'+key+'" value="'+(it.precioUnitario||0)+'"/></div>'+
+          '<div class="fg"><label class="fl">Total</label><input type="number" step="0.01" min="0" class="fi ocr-t" data-k="'+key+'" value="'+(it.total||0)+'"/></div>'+
+        '</div>'+
+        '<div style="display:flex;justify-content:flex-end"><button class="btn btn-d btn-sm ocr-del" data-k="'+key+'">Eliminar</button></div>'+
+      '</div>';
+    });
+    rows += '</div>';
+  });
+  var h = '<div class="mtitle">Revisión OCR</div>'+rows+
+    '<div style="display:flex;gap:8px;margin-top:12px">'+
+    '<button class="btn btn-g" style="flex:1" id="btn-accept-ocr">Aceptar artículos</button>'+
+    '<button class="btn btn-o" style="flex:1" id="btn-cancel-ocr">Cancelar</button>'+
+    '</div>';
+  oModal(h);
+  setTimeout(function(){
+    document.querySelectorAll('.ocr-del').forEach(function(b){b.addEventListener('click',function(){
+      var wrap=b.closest('.add-form'); if(wrap)wrap.remove();
+    });});
+    var ba=el('btn-accept-ocr'); if(ba)ba.addEventListener('click',acceptOcrItems);
+    var bc=el('btn-cancel-ocr'); if(bc)bc.addEventListener('click',function(){cModal();});
+  },50);
+}
+
+function escapeHtml(s){
+  return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+function acceptOcrItems(){
+  var groups = window._ocrDetected || [];
+  var accepted=[];
+  groups.forEach(function(group,gi){
+    group.productos.forEach(function(it,ii){
+      var key=gi+'_'+ii;
+      var pEl=document.querySelector('.ocr-p[data-k="'+key+'"]');
+      if(!pEl)return;
+      var prod=(pEl.value||'').trim();
+      if(!prod)return;
+      var c=parseFloat((document.querySelector('.ocr-c[data-k="'+key+'"]')||{}).value)||1;
+      var u=((document.querySelector('.ocr-u[data-k="'+key+'"]')||{}).value||'pza').trim()||'pza';
+      var pu=parseFloat((document.querySelector('.ocr-pu[data-k="'+key+'"]')||{}).value)||0;
+      var t=parseFloat((document.querySelector('.ocr-t[data-k="'+key+'"]')||{}).value)||(pu*c);
+      accepted.push({producto:prod,cantidad:c,unidad:u,precioUnitario:pu,total:t||0,fromOcr:true});
+    });
+  });
+  if(!accepted.length){toast('No hay artículos válidos para aceptar','err');return;}
+  curItems = curItems.concat(accepted);
+  groups.forEach(function(g){ if(g.ticket){ g.ticket.ocrAccepted=true; } });
+  cModal();
+  el('prov-form').innerHTML=renderProvForm();wireProvForm();
+  toast(accepted.length+' artículo(s) agregados desde OCR','ok');
+}
+
+function resetAcceptedOcrItems(){
+  curTickets.forEach(function(t){ if(t){ delete t.ocrAccepted; } });
+  curItems = curItems.filter(function(it){ return !it.fromOcr; });
+  el('prov-form').innerHTML=renderProvForm();wireProvForm();
+  toast('OCR reiniciado para este proveedor','ok');
 }
 
 async function uploadPendingTickets(){
