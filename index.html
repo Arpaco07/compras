@@ -350,7 +350,7 @@ function pickFecha(){
 var curProv=null,curItems=[],curTickets=[],curHasTicket=true,editIdx=-1;
 function getUploadedTicketIds(){return curTickets.filter(function(t){return t&&t.uploaded&&t.ticketId;}).map(function(t){return t.ticketId;});}
 function hasPendingTickets(){return curTickets.some(function(t){return t&&!t.uploaded&&t.file;});}
-function hasTicketsForOcr(){return curTickets.some(function(t){return t&&(t.file||t.base64Data);});}
+function hasTicketsForOcr(){return curTickets.some(function(t){return t&&(t.uploaded||t.ticketId||t.fileUrl||t.base64Data||t.file);});}
 
 function pgNueva(){
   el('hdate').textContent=fmtS(S.fecha);
@@ -420,8 +420,8 @@ function renderProvForm(){
   if(curHasTicket){
     h+=renderTicketZone();
     h+='<div style="display:flex;gap:8px;margin-bottom:10px">'+
-      '<button class="btn btn-o btn-sm" style="flex:1'+(hasTicketsForOcr()?'':' ;opacity:.5;pointer-events:none')+'" id="btn-read-ocr">Leer ticket con OCR</button>'+
-      '<button class="btn btn-o btn-sm" style="flex:1'+(curTickets.some(function(t){return t&&t.ocrAccepted;})?'':' ;opacity:.5;pointer-events:none')+'" id="btn-reset-ocr">Limpiar OCR</button>'+
+      '<button class="btn '+(hasTicketsForOcr()?'btn-g':'btn-o')+' btn-sm" '+(hasTicketsForOcr()?'':'disabled')+' style="flex:1'+(hasTicketsForOcr()?'':' ;opacity:.5;pointer-events:none')+'" id="btn-read-ocr">Leer ticket con OCR</button>'+
+      '<button class="btn '+(curTickets.some(function(t){return t&&t.ocrAccepted;})?'btn-o':'btn-o')+' btn-sm" '+(curTickets.some(function(t){return t&&t.ocrAccepted;})?'':'disabled')+' style="flex:1'+(curTickets.some(function(t){return t&&t.ocrAccepted;})?'':' ;opacity:.5;pointer-events:none')+'" id="btn-reset-ocr">Limpiar OCR</button>'+
     '</div>';
   } else {
     h+='<div style="background:var(--golddim);border:1px solid rgba(201,168,76,.3);border-radius:var(--rsm);padding:8px 11px;margin-bottom:11px;font-size:11px;color:var(--gold)">&#9998; Entrada manual — sin ticket</div>';
@@ -557,7 +557,7 @@ async function addOrEditItem(){
 
 async function readTicketsWithOcr(){
   if(!curProv){toast('Selecciona un proveedor','err');return;}
-  var readable=curTickets.filter(function(t){return t&&(t.file||t.base64Data)&&!t.ocrAccepted;});
+  var readable=curTickets.filter(function(t){return t&&(t.uploaded||t.ticketId||t.fileUrl||t.base64Data||t.file)&&!t.ocrAccepted;});
   if(!readable.length){toast('No hay tickets pendientes de OCR','err');return;}
   load(true);toast('Leyendo '+readable.length+' ticket(s) con OCR...');
   var detected=[];
@@ -876,9 +876,12 @@ async function showDay(fecha){
   if(ticks.length){
     h+='<div class="divider"></div><div class="ctitle">Tickets del dia</div>';
     ticks.forEach(function(t){
-      h+='<div class="fb" style="margin-bottom:6px;font-size:12px">'+
-        '<span>'+t.proveedor+'</span>'+
-        '<a href="'+t.fileUrl+'" target="_blank" class="btn btn-o btn-sm">Ver &#128206;</a></div>';
+      h+='<div class="fb" style="margin-bottom:6px;font-size:12px;gap:8px">'+
+        '<span style="flex:1">'+t.proveedor+'</span>'+
+        '<div style="display:flex;gap:8px">'+
+        '<a href="'+t.fileUrl+'" target="_blank" class="btn btn-o btn-sm">Ver &#128206;</a>'+
+        (isAdmin?'<button class="btn btn-d btn-sm day-del-ticket" data-id="'+t.id+'">Eliminar</button>':'')+
+        '</div></div>';
     });
   }
 
@@ -904,6 +907,9 @@ async function showDay(fecha){
     });
     document.querySelectorAll('.day-del[data-id]').forEach(function(b){
       b.addEventListener('click',function(){deleteItemModal(b.dataset.id,fecha);});
+    });
+    document.querySelectorAll('.day-del-ticket[data-id]').forEach(function(b){
+      b.addEventListener('click',function(){deleteTicketModal(b.dataset.id,fecha);});
     });
   },60);
 }
@@ -962,6 +968,25 @@ function deleteItemModal(id,fecha){
       load(true);var r=await api('deleteCompra',{id:id});load(false);
       if(r.ok){toast('Articulo eliminado','ok');showDay(fecha);}
       else toast(r.error||'Error','err');
+    });
+  },50);
+}
+
+
+function deleteTicketModal(id,fecha){
+  var h='<div class="mtitle">Eliminar ticket</div>'+
+    '<p style="font-size:13px;color:var(--wdim);margin-bottom:14px">Se eliminará el ticket guardado y dejará de aparecer en este día.</p>'+
+    '<div style="display:flex;gap:8px">'+
+      '<button class="btn btn-d btn-full" id="btn-del-ticket-conf">Eliminar</button>'+
+      '<button class="btn btn-o btn-full" id="btn-del-ticket-canc">Cancelar</button>'+
+    '</div>';
+  el('mc').innerHTML='<div class="mhandle" style="margin-bottom:14px"></div>'+h;
+  setTimeout(function(){
+    var bc=el('btn-del-ticket-conf'),bx=el('btn-del-ticket-canc');
+    if(bx)bx.addEventListener('click',function(){showDay(fecha);});
+    if(bc)bc.addEventListener('click',async function(){
+      load(true);var r=await api('deleteTicket',{id:id});load(false);
+      if(r.ok){toast('Ticket eliminado','ok');showDay(fecha);}else toast(r.error||'Error','err');
     });
   },50);
 }
