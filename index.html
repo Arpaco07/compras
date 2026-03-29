@@ -572,7 +572,8 @@ async function readTicketsWithOcr(){
         proveedor:curProv,
         mimeType:(t.file&&t.file.type)||t.mimeType||'image/jpeg',
         base64Data:b64,
-        fileId:t.ticketId||''
+        fileId:t.fileId||t.ticketId||'',
+        proveedorHint:curProv
       });
       if(r.ok && r.productos && r.productos.length){
         detected.push({ticket:t, proveedor:r.proveedor||curProv, total:r.total||0, productos:r.productos});
