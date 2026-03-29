@@ -350,7 +350,7 @@ function pickFecha(){
 var curProv=null,curItems=[],curTickets=[],curHasTicket=true,editIdx=-1;
 function getUploadedTicketIds(){return curTickets.filter(function(t){return t&&t.uploaded&&t.ticketId;}).map(function(t){return t.ticketId;});}
 function hasPendingTickets(){return curTickets.some(function(t){return t&&!t.uploaded&&t.file;});}
-function hasTicketsForOcr(){return curTickets.some(function(t){return t&&t.file;});}
+function hasTicketsForOcr(){return curTickets.some(function(t){return t&&(t.file||t.base64Data);});}
 
 function pgNueva(){
   el('hdate').textContent=fmtS(S.fecha);
@@ -557,18 +557,19 @@ async function addOrEditItem(){
 
 async function readTicketsWithOcr(){
   if(!curProv){toast('Selecciona un proveedor','err');return;}
-  var readable=curTickets.filter(function(t){return t&&t.file&&!t.ocrAccepted;});
+  var readable=curTickets.filter(function(t){return t&&(t.file||t.base64Data)&&!t.ocrAccepted;});
   if(!readable.length){toast('No hay tickets pendientes de OCR','err');return;}
   load(true);toast('Leyendo '+readable.length+' ticket(s) con OCR...');
   var detected=[];
   for(var i=0;i<readable.length;i++){
     var t=readable[i];
     try{
-      var b64=await toB64(t.file);
+      var b64=t.base64Data || (t.file?await toB64(t.file):'');
+      if(!b64){toast((t.displayName||t.name||('ticket '+(i+1)))+': no tiene imagen para OCR','err');continue;}
       var r=await api('ocrTicket',{
         fecha:S.fecha,
         proveedor:curProv,
-        mimeType:t.file.type||t.mimeType||'image/jpeg',
+        mimeType:(t.file&&t.file.type)||t.mimeType||'image/jpeg',
         base64Data:b64
       });
       if(r.ok && r.productos && r.productos.length){
@@ -685,6 +686,8 @@ async function uploadPendingTickets(){
         t.ticketId=tr.ticketId;
         t.fileUrl=tr.fileUrl;
         t.displayName=tr.fileName||t.displayName||t.name;
+        t.base64Data=b64;
+        t.mimeType=t.file.type||t.mimeType||'image/jpeg';
         delete t.file;
         okCount++;
       }else{
@@ -857,14 +860,18 @@ async function showDay(fecha){
         '</div>'+
         '<div class="itot">'+money(i.total)+'</div>'+
         (isAdmin
-          ?'<button class="iedit" data-id="'+i.id+'" data-prod="'+encodeURIComponent(JSON.stringify(i))+'" title="Editar">&#9998;</button>'+
-           '<button class="idel"  data-id="'+i.id+'" title="Eliminar">&#10006;</button>'
+          ?'<button class="btn btn-o btn-sm day-edit" data-id="'+i.id+'" data-prod="'+encodeURIComponent(JSON.stringify(i))+'" title="Editar">Editar</button>'+
+           '<button class="btn btn-d btn-sm day-del" data-id="'+i.id+'" title="Eliminar">Eliminar</button>'
           :''
         )+
       '</div>';
     });
     h+='</div>';
   });
+
+  if(isAdmin){
+    h+='<div style="font-size:11px;color:var(--wdim);margin:0 0 10px">Toca <b>Editar</b> o <b>Eliminar</b> en cualquier artículo para corregirlo en este día.</div>';
+  }
 
   if(ticks.length){
     h+='<div class="divider"></div><div class="ctitle">Tickets del dia</div>';
@@ -892,10 +899,10 @@ async function showDay(fecha){
     if(hp)hp.addEventListener('click',function(){genHistReport(fecha,'pdf');});
     if(ht)ht.addEventListener('click',function(){genHistReport(fecha,'tickets');});
     // FIX 4: Edit/Delete items from historial (admin only)
-    document.querySelectorAll('.iedit[data-id]').forEach(function(b){
+    document.querySelectorAll('.day-edit[data-id]').forEach(function(b){
       b.addEventListener('click',function(){editItemModal(b.dataset.id,JSON.parse(decodeURIComponent(b.dataset.prod)),fecha);});
     });
-    document.querySelectorAll('.idel[data-id]').forEach(function(b){
+    document.querySelectorAll('.day-del[data-id]').forEach(function(b){
       b.addEventListener('click',function(){deleteItemModal(b.dataset.id,fecha);});
     });
   },60);
