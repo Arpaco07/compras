@@ -169,6 +169,7 @@ header{height:var(--hdrh);background:var(--sur);border-bottom:1px solid var(--bo
 <script>
 
 const API='https://script.google.com/macros/s/AKfycbwR4HAW0_ELp4I_I3ekkRPSair0xTLp_eL9t_ZWvHXe7nvGOzLbj44c6fBknBptqh1czw/exec';
+const APP_VERSION='v20260329-final';
 const S={user:null,pin:'',fecha:today(),provs:[],compras:{},tickets:{},screen:'home'};
 
 async function api(a,p){
@@ -571,7 +572,7 @@ async function readTicketsWithOcr(){
         proveedor:curProv,
         mimeType:(t.file&&t.file.type)||t.mimeType||'image/jpeg',
         base64Data:b64,
-        fileId:t.fileId||''
+        fileId:t.ticketId||''
       });
       if(r.ok && r.productos && r.productos.length){
         detected.push({ticket:t, proveedor:r.proveedor||curProv, total:r.total||0, productos:r.productos});
@@ -689,7 +690,6 @@ async function uploadPendingTickets(){
         t.displayName=tr.fileName||t.displayName||t.name;
         t.base64Data=b64;
         t.mimeType=t.file.type||t.mimeType||'image/jpeg';
-        delete t.file;
         okCount++;
       }else{
         toast('Error ticket '+(ti+1)+': '+(tr.error||'No se pudo subir'),'err');
