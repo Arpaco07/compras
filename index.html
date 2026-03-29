@@ -570,7 +570,8 @@ async function readTicketsWithOcr(){
         fecha:S.fecha,
         proveedor:curProv,
         mimeType:(t.file&&t.file.type)||t.mimeType||'image/jpeg',
-        base64Data:b64
+        base64Data:b64,
+        fileId:t.fileId||''
       });
       if(r.ok && r.productos && r.productos.length){
         detected.push({ticket:t, proveedor:r.proveedor||curProv, total:r.total||0, productos:r.productos});
